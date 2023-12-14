@@ -1,0 +1,63 @@
+@echo off
+cls
+
+REM	##SCOMManagementGroup##      # SCOM Management group, seen in SCOM console on top left corner
+REM
+REM	##SCOMManagementServer##     # SCOM management Server FQDN in primary domain
+REM	##SCOMManagementServerGW##     # SCOM first gateway DMZ use FQDN
+REM	##SCOMManagementServerGW2##     # Second gateway for forest use FQDN
+REM	##Domain## as forest FQDN
+REM	##Domain2## as forest FQDN
+REM
+REM	##DMZ##		# Leverage if configuration tagged
+
+REM This script command line is for NEW installs of the agent (nothing prior)
+
+ECHO Installing SCOM 2019 Windows Agent...
+echo.
+echo Determining domain....
+echo.
+
+REM Determine if machine is in DMZ....
+systeminfo | findstr /i /c:"domain" | findstr /i /c:"##DMZ##" && (
+
+echo Machine found to be in DMZ...installing for that enclave and management server: ##Domain2##"
+echo.
+
+%WinDir%\System32\msiexec.exe /i %~DP0MOMAgent.msi /qn USE_SETTINGS_FROM_AD=0 USE_MANUALLY_SPECIFIED_SETTINGS=1 MANAGEMENT_GROUP=##SCOMManagementGroup## MANAGEMENT_SERVER_DNS=##SCOMManagementServerGW## SECURE_PORT=5723 ACTIONS_USE_COMPUTER_ACCOUNT=1 NOAPM=1 AcceptEndUserLicenseAgreement=1
+
+echo.
+
+GOTO Logging)
+
+REM Determine if machine is on domain....
+
+systeminfo | findstr /i /c:"domain" | findstr /i /c:"##Domain##" && (
+
+echo Machine found to be in ##Domain##...installing for that enclave and management server: ##Domain##
+
+echo.
+
+%WinDir%\System32\msiexec.exe /i %~DP0MOMAgent.msi /qn USE_SETTINGS_FROM_AD=0 USE_MANUALLY_SPECIFIED_SETTINGS=1 MANAGEMENT_GROUP=##SCOMManagementGroup##  MANAGEMENT_SERVER_DNS=##SCOMManagementServer## SECURE_PORT=5723 ACTIONS_USE_COMPUTER_ACCOUNT=1 NOAPM=1 AcceptEndUserLicenseAgreement=1
+
+echo.
+
+GOTO Logging)
+
+REM Neither DMZ or domain joined found above...look for alternate domain(s)
+REM
+REM These all share this same management server: FOREST2.FQDN and Gateway server
+REM 
+
+%WinDir%\System32\msiexec.exe /i %~DP0MOMAgent.msi /qn USE_SETTINGS_FROM_AD=0 USE_MANUALLY_SPECIFIED_SETTINGS=1 MANAGEMENT_GROUP=##SCOMManagementGroup## MANAGEMENT_SERVER_DNS=##SCOMManagementServerGW2## SECURE_PORT=5723 ACTIONS_USE_COMPUTER_ACCOUNT=1 NOAPM=1 AcceptEndUserLicenseAgreement=1
+
+:Logging
+
+ECHO Installing SCOM 2019 Windows Agent Completed...>> C:\Windows\Logs\SCOM2019Agent.log
+
+REM
+REM Verify installer can write to windows logs
+REM
+
+time /t >> C:\Windows\Logs\SCOM2019Agent.log
+date /t >> C:\Windows\Logs\SCOM2019Agent.log

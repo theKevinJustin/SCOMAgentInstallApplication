@@ -1,0 +1,23 @@
+Below thread = ‘easy button’ to package SCOM agent when MECM administrator has availability to add SCOM agent to SCCM task sequence.
+
+MECM/SCCM Application/package script :
+Using Powershell.exe:
+###############Startscript
+"Scom Super Installer" 
+start-transcript -path "c:\windows\ccm\logs\SCOMSUPERINSTALLER.log"
+
+########ONLY THIS SECTION NEEDS TO BE EDITED, replace with your different domain FQDNS and the gateway/managementgroups
+Switch ($domain) {
+"DomainFQDN1" {$SCOMGATEWAYFQDN="";$SCOMManagementGroup=""}
+"DomainFQDN2" {$SCOMGATEWAYFQDN="";$SCOMManagementGroup=""}
+}
+########ONLY THIS SECTION NEEDS TO BE EDITED
+
+"Install"
+$commonArgs=".\MOMAgent.msi /qn USE_SETTINGS_FROM_AD=0 USE_MANUALLY_SPECIFIED_SETTINGS=1 SECURE_PORT=5723 ACTIONS_USE_COMPUTER_ACCOUNT=1 NOAPM=1 AcceptEndUserLicenseAgreement=1 MANAGEMENT_SERVER_DNS=$SCOMGATEWAYFQDN MANAGEMENT_GROUP=$SCOMManagementGroup"
+
+start-process MSIEXEC.exe -ArgumentList $commonArgs -wait -nonewwindow
+stop-transcript
+###############Endscript
+
+
