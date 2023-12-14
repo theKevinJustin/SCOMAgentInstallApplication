@@ -1,0 +1,130 @@
+##======================================================================
+## Verify/Configure SCOM Agent
+##
+## If tests succeed (based on this output), we may need to test other SCOM
+## server connectivity, but both # should work
+##=======================================================================
+## Replace the following variables
+##
+##	##SCOMMSServer1##
+##	##SCOMMSServer2##
+##	##DomainName##
+##	##SCOMManagementGroupname##
+##
+##=======================================================================
+## Verify network connectivity to two site 1 servers
+##=======================================================================
+
+$SCOMServers = @(".##SCOMMSServer1##", ".##SCOMMSServer2##")
+$MgmtGroup = "##SCOMManagementGroupname##"
+$SCOMAgent = New-Object -ComObject AgentConfigManager.MgmtSvcCfg
+$Domain = (Get-WmiObject Win32_ComputerSystem).Domain
+
+#Aborts if the machine is not domain joined
+if ( $Domain -notlike "*.##DomainName##")
+	{
+	throw "Machine is not a domain member, or not on a subdomain"
+}
+
+#Finds the first SCOM server reachable using TCP port 5723
+ForEach($SCOMServer in $SCOMServers)
+	{
+	If ((Test-NetConnection -Port 5723 -ComputerName $SCOMServer).TcpTestSucceeded)
+		{
+	        $MgmtServer = $SCOMServer
+		Write-Host "Connectivity GOOD for SCOM, setting management server to $($MgmtServer)"
+		break
+		}
+	Else
+		{
+		Write-Host "Connectivity FAIL for $SCOMServer, Firewall access may be blocked"
+		}
+	}
+
+#Aborts if previous section was not able to reach any servers
+If ( -not $MgmtServer )
+	{
+	throw "Machine not able to reach any of the SCOM servers specified"
+	}
+
+#Gets current management group
+$ComObjMgmtGroup = $SCOMAgent.GetManagementGroup($MgmtGroup)
+
+#Checks if the current server set matches what we want, if so writes that info to host
+$SCOMServers | where { $ComObjMgmtGroup.ManagementServer -match $_ } | % { Write-Host "Management Server already set to $_"}
+
+#Check management server is set to the one we're able to reach, if not makes it so.
+If ($ComObjMgmtGroup.ManagementServer -ine $MgmtServer)
+	{
+	$SCOMAgent.RemoveManagementGroup($MgmtGroup)
+	$SCOMAgent.AddManagementGroup($MgmtGroup, $MgmtServer)
+	$ComObjMgmtGroup = $SCOMAgent.GetManagementGroup($MgmtGroup)
+	}
+
+#If current group or server aren't set sets them
+If ((-not $ComObjMgmtGroup) -or (-not $ComObjMgmtGroup.ManagementServer))
+	{
+	write-host "Management Server value NULL "
+	write-host "Management Server set to $($MgmtServer)"
+	If (-not $ComObjMgmtGroup)
+		{
+		$SCOMAgent.AddManagementGroup($MgmtGroup,$MgmtServer,5723)
+		$ComObjMgmtGroup = $SCOMAgent.GetManagementGroup($MgmtGroup)
+		}
+	Else
+		{
+		$ScomAgent.RemoveManagementGroup($MgmtGroup)
+		$SCOMAgent.AddManagementGroup($MgmtGroup,$MgmtServer,5723)
+		$ComObjMgmtGroup = $SCOMAgent.GetManagementGroup($MgmtGroup)
+		}
+	write-host "Added Management Group, Management Server to SCOM"
+	}
+
+Write-Host "Management Server: $MgmtServer"
+Write-Host "Management Group: $MgmtGroup"
+
+# Clean up extraneous management groups
+$ExtraGroups = ($ScomAgent.GetManagementGroups()).ManagementGroupName | ?{ $_ -ne $MgmtGroup }
+write-host "SCOM Agent configured for $($ExtraGroups.Count) extra management groups"
+foreach ( $Extra in $ExtraGroups )
+	{    
+	$SCOMAgent.RemoveManagementGroup("$Extra")
+	}
+
+# sleep 5
+# Restart service to expedite config request
+Restart-Service healthservice
+write-host "SCOM healthservice restarted"
+
+
+
+
+#                               #
+# Registry section not reviewed #
+#                               #
+
+ 
+# Check for new configuration request
+# Debug
+# get-eventlog -LogName "Operations Manager" -after
+# Can assess ManagementServiceConfigurationClass.ReloadConfigurationMethod()
+# Link https://learn.microsoft.com/en-us/previous-versions/system-center/developer/hh329049(v=msdn.10)
+
+(get-date).Add.minutes(-10)| ? { $_.EventId -eq 21026 )
+
+
+$NewConfig = (get-eventlog -LogName "Operations Manager" -after (get-date).Add.minutes(-10)| ? { $_.EventId -eq 21026 } )
+$NewConfig.Count
+if ( $NewConfig.Count -gt 0 )
+	{
+	write-host "New Config request"
+	# Debug
+	# get-eventlog -LogName "Operations Manager" -after (get-date).Add.minutes(-10)| where { ( $_.EventId -eq 1210 ) -OR ( $_.EventID -eq 1201 ) }
+	# Check for new config
+	$ConfigActive = ( get-eventlog -LogName "Operations Manager" -after (get-date).AddMinutes(-10) | where { ( $_.EventId -eq 1210 ) -OR ( $_.EventID -eq 1201 ) } )
+	if ( $ConfigActive.Count -gt 0 )
+		{
+		write-host "New Config Active Event ID's 1210 or 1201 seen in Operations Manager Event Log"
+		}
+	}  
+	#| ft TimeGenerated,EventID,Message -auto -wrap
